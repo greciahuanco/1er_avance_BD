@@ -1,0 +1,89 @@
+-----CREACION DE SECUENCIA 
+
+
+CREATE SEQUENCE seq_estudiante START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE seq_curso START WITH 100 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE seq_docente START WITH 200 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE seq_matricula START WITH 1000 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+
+-----CREACION DE TABLAS 
+
+
+CREATE TABLE Estudiante (
+    id_estudiante NUMBER PRIMARY KEY,
+    nombre VARCHAR2(50) NOT NULL,
+    apellido VARCHAR2(50) NOT NULL,
+    dni VARCHAR2(10) UNIQUE,
+    email VARCHAR2(100)
+);
+
+CREATE TABLE Docente (
+    id_docente NUMBER PRIMARY KEY,
+    nombre VARCHAR2(100) NOT NULL,
+    especialidad VARCHAR2(50),
+    email VARCHAR2(100)
+);
+
+CREATE TABLE Curso (
+    id_curso NUMBER PRIMARY KEY,
+    nombre VARCHAR2(100) NOT NULL,
+    duracion_semanas NUMBER CHECK (duracion_semanas > 8),
+    modalidad VARCHAR2(20) CHECK (modalidad IN ('Presencial', 'Online')),
+    id_docente NUMBER,
+    CONSTRAINT fk_curso_docente FOREIGN KEY (id_docente) REFERENCES Docente(id_docente)
+);
+
+CREATE TABLE Matricula (
+    id_matricula NUMBER PRIMARY KEY,
+    fecha DATE DEFAULT SYSDATE,
+    id_estudiante NUMBER,
+    id_curso NUMBER,
+    CONSTRAINT fk_mat_est FOREIGN KEY (id_estudiante) REFERENCES Estudiante(id_estudiante),
+    CONSTRAINT fk_mat_curso FOREIGN KEY (id_curso) REFERENCES Curso(id_curso)
+);
+
+
+
+----INSERCIÓN DE DATOS
+
+INSERT INTO Estudiante VALUES (seq_estudiante.NEXTVAL, 'Grecia', 'López', '75123456', 'grecia@email.com');
+INSERT INTO Estudiante VALUES (seq_estudiante.NEXTVAL, 'Carlos', 'Mendoza', '75234567', 'carlos.mendoza@gmail.com');
+
+INSERT INTO Docente VALUES (seq_docente.NEXTVAL, 'Dr. Ana Ruiz', 'Desarrollo', 'ana.ruiz@gmail.com');
+INSERT INTO Docente VALUES (seq_docente.NEXTVAL, 'Ing. Luis Torres', 'Bases de Datos', 'luis.torres.bd@gmail.com');
+
+INSERT INTO Curso VALUES (seq_curso.NEXTVAL, 'Programación en Python', 12, 'Online', 200);
+INSERT INTO Curso VALUES (seq_curso.NEXTVAL, 'Bases de Datos', 10, 'Presencial', 201);
+
+INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, 1, 100);
+INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, 2, 101);
+
+COMMIT;
+
+
+
+---OBJETOS DE ESQUEMA
+
+CREATE VIEW vista_estudiantes AS
+SELECT id_estudiante, nombre, apellido, email
+FROM ESTUDIANTE;
+
+CREATE INDEX idx_est_apellido ON ESTUDIANTE(apellido);
+
+CREATE SYNONYM est FOR ESTUDIANTE;
+
+SELECT * FROM vista_estudiantes;
+SELECT * FROM est;
+
+
+
+----VERIFICACIÓN 
+
+SELECT * FROM Estudiante;
+SELECT * FROM Curso;
+SELECT * FROM Docente;
+SELECT * FROM Matricula;
+
+
+
