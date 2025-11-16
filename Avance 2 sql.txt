@@ -1,0 +1,147 @@
+Operaciones de Inserción:
+
+-- Insertar nuevos estudiantes
+INSERT INTO Estudiante VALUES (seq_estudiante.NEXTVAL, 'María', 'Gonzales', '75345678', 'maria.gonzales@email.com');
+INSERT INTO Estudiante VALUES (seq_estudiante.NEXTVAL, 'Juan', 'Pérez', '75456789', 'juan.perez@email.com');
+
+-- Insertar nuevo docente
+INSERT INTO Docente VALUES (seq_docente.NEXTVAL, 'Mg. Sofia Castro', 'Inteligencia Artificial', 'sofia.castro@email.com');
+
+-- Insertar nuevo curso
+INSERT INTO Curso VALUES (seq_curso.NEXTVAL, 'Machine Learning', 14, 'Online', 202);
+
+-- Insertar nuevas matrículas
+INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, 3, 102);
+INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, 4, 102);
+Operaciones de Actualización:
+
+-- Actualizar email de un estudiante
+UPDATE Estudiante SET email = 'grecia.lopez.actualizado@email.com' WHERE id_estudiante = 1;
+
+-- Cambiar modalidad de un curso
+UPDATE Curso SET modalidad = 'Presencial' WHERE id_curso = 100;
+
+-- Actualizar especialidad de docente
+UPDATE Docente SET especialidad = 'Data Science' WHERE id_docente = 202;
+Operaciones de Eliminación:
+sql
+-- Eliminar matrícula específica
+DELETE FROM Matricula WHERE id_estudiante = 4 AND id_curso = 102;
+
+-- Eliminar estudiante (solo si no tiene matrículas)
+DELETE FROM Estudiante WHERE id_estudiante = 4;
+
+
+Verificación de Restricciones:
+
+-- PRIMARY KEY: Verificar duplicados
+SELECT id_estudiante, COUNT(*) FROM Estudiante GROUP BY id_estudiante HAVING COUNT(*) > 1;
+
+-- FOREIGN KEY: Verificar integridad referencial
+SELECT * FROM Matricula WHERE id_estudiante NOT IN (SELECT id_estudiante FROM Estudiante);
+SELECT * FROM Matricula WHERE id_curso NOT IN (SELECT id_curso FROM Curso);
+
+-- UNIQUE: Verificar DNI duplicados
+SELECT dni, COUNT(*) FROM Estudiante GROUP BY dni HAVING COUNT(*) > 1;
+
+-- CHECK: Verificar modalidades válidas
+SELECT * FROM Curso WHERE modalidad NOT IN ('Presencial', 'Online');
+
+-- NOT NULL: Verificar campos obligatorios
+SELECT * FROM Estudiante WHERE nombre IS NULL OR apellido IS NULL;
+
+
+Joins entre Múltiples Tablas:
+
+-- Consulta con INNER JOIN: Estudiantes con sus cursos y docentes
+SELECT 
+    e.nombre || ' ' || e.apellido AS estudiante,
+    c.nombre AS curso,
+    c.duracion_semanas,
+    c.modalidad,
+    d.nombre AS docente,
+    d.especialidad,
+    m.fecha AS fecha_matricula
+FROM Matricula m
+INNER JOIN Estudiante e ON m.id_estudiante = e.id_estudiante
+INNER JOIN Curso c ON m.id_curso = c.id_curso
+INNER JOIN Docente d ON c.id_docente = d.id_docente
+ORDER BY m.fecha DESC;
+
+Subconsultas:
+
+-- Estudiantes que están matriculados en más de un curso
+SELECT e.nombre, e.apellido, e.email
+FROM Estudiante e
+WHERE e.id_estudiante IN (
+    SELECT m.id_estudiante 
+    FROM Matricula m 
+    GROUP BY m.id_estudiante 
+    HAVING COUNT(*) > 1
+);
+
+-- Cursos con más estudiantes matriculados
+SELECT c.nombre AS curso, 
+       (SELECT COUNT(*) FROM Matricula m WHERE m.id_curso = c.id_curso) AS total_estudiantes
+FROM Curso c
+ORDER BY total_estudiantes DESC;
+Funciones Agregadas:
+
+-- Estadísticas generales
+SELECT 
+    COUNT(DISTINCT e.id_estudiante) AS total_estudiantes,
+    COUNT(DISTINCT c.id_curso) AS total_cursos,
+    COUNT(DISTINCT d.id_docente) AS total_docentes,
+    COUNT(*) AS total_matriculas,
+    AVG(c.duracion_semanas) AS duracion_promedio_cursos
+FROM Estudiante e, Curso c, Docente d, Matricula m;
+
+-- Estudiantes por curso
+SELECT 
+    c.nombre AS curso,
+    COUNT(m.id_estudiante) AS cantidad_estudiantes,
+    c.modalidad
+FROM Curso c
+LEFT JOIN Matricula m ON c.id_curso = m.id_curso
+GROUP BY c.id_curso, c.nombre, c.modalidad
+ORDER BY cantidad_estudiantes DESC;
+
+
+Creación de Índices Adicionales:
+
+-- Índice para búsquedas por email
+CREATE INDEX idx_estudiante_email ON Estudiante(email);
+
+-- Índice compuesto para búsquedas frecuentes
+CREATE INDEX idx_curso_modalidad_duracion ON Curso(modalidad, duracion_semanas);
+
+-- Índice para consultas de matrículas por fecha
+CREATE INDEX idx_matricula_fecha ON Matricula(fecha);
+Transacciones Complejas:
+
+-- Transacción: Matricular estudiante en múltiples cursos
+DECLARE
+    v_estudiante_id NUMBER := 3;
+    v_curso1_id NUMBER := 100;
+    v_curso2_id NUMBER := 101;
+BEGIN
+    -- Iniciar transacción
+    SAVEPOINT inicio_matricula;
+    
+    -- Insertar primera matrícula
+    INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, v_estudiante_id, v_curso1_id);
+    
+    -- Insertar segunda matrícula
+    INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, v_estudiante_id, v_curso2_id);
+    
+    -- Confirmar transacción
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Matrículas realizadas exitosamente');
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Revertir en caso de error
+        ROLLBACK TO inicio_matricula;
+        DBMS_OUTPUT.PUT_LINE('Error en la transacción: ' || SQLERRM);
+END;
+/
