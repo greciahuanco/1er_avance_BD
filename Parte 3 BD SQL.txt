@@ -1,0 +1,195 @@
+-- ==========================================
+-- SISTEMA DE GESTIÓN ACADÉMICA - ORACLE
+-- ==========================================
+
+-- SECUENCIAS
+CREATE SEQUENCE seq_estudiante START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE seq_curso START WITH 100 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE seq_docente START WITH 200 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE seq_matricula START WITH 1000 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+-- TABLAS PRINCIPALES
+CREATE TABLE Estudiante (
+    id_estudiante NUMBER PRIMARY KEY,
+    nombre VARCHAR2(50) NOT NULL,
+    apellido VARCHAR2(50) NOT NULL,
+    dni VARCHAR2(10) UNIQUE,
+    email VARCHAR2(100)
+);
+
+CREATE TABLE Docente (
+    id_docente NUMBER PRIMARY KEY,
+    nombre VARCHAR2(100) NOT NULL,
+    especialidad VARCHAR2(50),
+    email VARCHAR2(100)
+);
+
+CREATE TABLE Curso (
+    id_curso NUMBER PRIMARY KEY,
+    nombre VARCHAR2(100) NOT NULL,
+    duracion_semanas NUMBER CHECK (duracion_semanas > 8),
+    modalidad VARCHAR2(20) CHECK (modalidad IN ('Presencial', 'Online')),
+    id_docente NUMBER,
+    CONSTRAINT fk_curso_docente FOREIGN KEY (id_docente) REFERENCES Docente(id_docente)
+);
+
+CREATE TABLE Matricula (
+    id_matricula NUMBER PRIMARY KEY,
+    fecha DATE DEFAULT SYSDATE,
+    id_estudiante NUMBER,
+    id_curso NUMBER,
+    CONSTRAINT fk_mat_est FOREIGN KEY (id_estudiante) REFERENCES Estudiante(id_estudiante),
+    CONSTRAINT fk_mat_curso FOREIGN KEY (id_curso) REFERENCES Curso(id_curso)
+);
+
+-- DATOS DE PRUEBA
+INSERT INTO Estudiante VALUES (seq_estudiante.NEXTVAL, 'Grecia', 'López', '75123456', 'grecia@email.com');
+INSERT INTO Estudiante VALUES (seq_estudiante.NEXTVAL, 'Carlos', 'Mendoza', '75234567', 'carlos.mendoza@gmail.com');
+
+INSERT INTO Docente VALUES (seq_docente.NEXTVAL, 'Dr. Ana Ruiz', 'Desarrollo', 'ana.ruiz@gmail.com');
+INSERT INTO Docente VALUES (seq_docente.NEXTVAL, 'Ing. Luis Torres', 'Bases de Datos', 'luis.torres.bd@gmail.com');
+
+INSERT INTO Curso VALUES (seq_curso.NEXTVAL, 'Programación en Python', 12, 'Online', 200);
+INSERT INTO Curso VALUES (seq_curso.NEXTVAL, 'Bases de Datos', 10, 'Presencial', 201);
+
+INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, 1, 100);
+INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, 2, 101);
+
+-- RESTRICCIONES AVANZADAS
+ALTER TABLE Estudiante ADD CONSTRAINT ck_email_est CHECK (email LIKE '%@%.%');
+ALTER TABLE Estudiante ADD CONSTRAINT ck_dni_est CHECK (LENGTH(dni) = 8 AND REGEXP_LIKE(dni, '^[0-9]+$'));
+ALTER TABLE Curso ADD CONSTRAINT ck_modalidad_curso CHECK (modalidad IN ('Presencial', 'Online', 'Híbrido'));
+ALTER TABLE Curso ADD CONSTRAINT ck_duracion_curso CHECK (duracion_semanas BETWEEN 1 AND 52);
+ALTER TABLE Matricula ADD CONSTRAINT uk_matricula_unica UNIQUE (id_estudiante, id_curso);
+ALTER TABLE Docente ADD CONSTRAINT ck_email_doc CHECK (email LIKE '%@%.%');
+
+-- ÍNDICES
+CREATE INDEX idx_est_apellido ON Estudiante(apellido);
+CREATE INDEX idx_estudiante_email ON Estudiante(email);
+CREATE INDEX idx_curso_docente ON Curso(id_docente);
+CREATE INDEX idx_matricula_fecha ON Matricula(fecha);
+CREATE INDEX idx_docente_especialidad ON Docente(especialidad);
+CREATE INDEX idx_curso_nombre ON Curso(nombre);
+
+-- ==========================================
+-- ENTREGA 3 - COMPONENTES AVANZADOS
+-- ==========================================
+
+-- PROCEDIMIENTOS ALMACENADOS
+CREATE OR REPLACE PROCEDURE sp_estudiantes_por_curso (
+    p_id_curso IN NUMBER,
+    p_cursor OUT SYS_REFCURSOR
+) AS BEGIN
+    OPEN p_cursor FOR
+    SELECT e.id_estudiante, e.nombre, e.apellido, e.email, e.dni
+    FROM Estudiante e JOIN Matricula m ON e.id_estudiante = m.id_estudiante
+    WHERE m.id_curso = p_id_curso;
+END;
+/
+
+CREATE OR REPLACE PROCEDURE sp_contar_estudiantes_curso (
+    p_id_curso IN NUMBER,
+    p_total OUT NUMBER
+) AS BEGIN
+    SELECT COUNT(*) INTO p_total FROM Matricula WHERE id_curso = p_id_curso;
+END;
+/
+
+CREATE OR REPLACE PROCEDURE sp_matricular_estudiante (
+    p_id_estudiante IN NUMBER,
+    p_id_curso IN NUMBER,
+    p_resultado OUT VARCHAR2
+) AS
+    v_existe_est NUMBER;
+    v_existe_cur NUMBER;
+    v_ya_matriculado NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO v_existe_est FROM Estudiante WHERE id_estudiante = p_id_estudiante;
+    IF v_existe_est = 0 THEN p_resultado := 'ERROR: Estudiante no existe'; RETURN; END IF;
+    
+    SELECT COUNT(*) INTO v_existe_cur FROM Curso WHERE id_curso = p_id_curso;
+    IF v_existe_cur = 0 THEN p_resultado := 'ERROR: Curso no existe'; RETURN; END IF;
+    
+    SELECT COUNT(*) INTO v_ya_matriculado FROM Matricula 
+    WHERE id_estudiante = p_id_estudiante AND id_curso = p_id_curso;
+    
+    IF v_ya_matriculado > 0 THEN 
+        p_resultado := 'ERROR: Estudiante ya está matriculado en este curso'; RETURN; 
+    END IF;
+    
+    INSERT INTO Matricula VALUES (seq_matricula.NEXTVAL, SYSDATE, p_id_estudiante, p_id_curso);
+    COMMIT;
+    p_resultado := 'ÉXITO: Estudiante matriculado correctamente';
+EXCEPTION WHEN OTHERS THEN p_resultado := 'ERROR: ' || SQLERRM;
+END;
+/
+
+-- SISTEMA DE AUDITORÍA
+CREATE TABLE Auditoria_Estudiante (
+    id_auditoria NUMBER PRIMARY KEY,
+    id_estudiante NUMBER,
+    accion VARCHAR2(50),
+    fecha TIMESTAMP,
+    usuario VARCHAR2(100),
+    datos_anteriores VARCHAR2(500)
+);
+
+CREATE SEQUENCE seq_auditoria START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER tr_auditoria_estudiantes
+    AFTER UPDATE OR DELETE ON Estudiante FOR EACH ROW
+DECLARE
+    v_accion VARCHAR2(50);
+    v_datos VARCHAR2(500);
+BEGIN
+    IF UPDATING THEN
+        v_accion := 'ACTUALIZACIÓN';
+        v_datos := 'Nombre: ' || :OLD.nombre || ' ' || :OLD.apellido || ', DNI: ' || :OLD.dni || ', Email: ' || :OLD.email;
+    ELSIF DELETING THEN
+        v_accion := 'ELIMINACIÓN';
+        v_datos := 'Nombre: ' || :OLD.nombre || ' ' || :OLD.apellido || ', DNI: ' || :OLD.dni;
+    END IF;
+    
+    INSERT INTO Auditoria_Estudiante VALUES (
+        seq_auditoria.NEXTVAL, :OLD.id_estudiante, v_accion, SYSTIMESTAMP, USER, v_datos
+    );
+END;
+/
+
+CREATE OR REPLACE TRIGGER tr_validar_matricula
+    BEFORE INSERT ON Matricula FOR EACH ROW
+DECLARE
+    v_curso_count NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO v_curso_count FROM Curso WHERE id_curso = :NEW.id_curso;
+    IF v_curso_count = 0 THEN
+        RAISE_APPLICATION_ERROR(-20001, 'El curso especificado no existe');
+    END IF;
+    IF :NEW.fecha IS NULL THEN :NEW.fecha := SYSDATE; END IF;
+END;
+/
+
+-- VISTAS AVANZADAS
+CREATE OR REPLACE VIEW vista_resumen_estudiantes AS
+SELECT e.id_estudiante, e.nombre || ' ' || e.apellido as nombre_completo,
+       e.dni, e.email, COUNT(m.id_matricula) as total_cursos
+FROM Estudiante e LEFT JOIN Matricula m ON e.id_estudiante = m.id_estudiante
+GROUP BY e.id_estudiante, e.nombre, e.apellido, e.dni, e.email;
+
+CREATE OR REPLACE VIEW vista_cursos_docentes AS
+SELECT c.id_curso, c.nombre as nombre_curso, c.duracion_semanas, c.modalidad,
+       d.nombre as nombre_docente, d.especialidad,
+       (SELECT COUNT(*) FROM Matricula m WHERE m.id_curso = c.id_curso) as estudiantes_inscritos
+FROM Curso c JOIN Docente d ON c.id_docente = d.id_docente;
+
+CREATE OR REPLACE VIEW vista_estadisticas_sistema AS
+SELECT (SELECT COUNT(*) FROM Estudiante) as total_estudiantes,
+       (SELECT COUNT(*) FROM Docente) as total_docentes,
+       (SELECT COUNT(*) FROM Curso) as total_cursos,
+       (SELECT COUNT(*) FROM Matricula) as total_matriculas,
+       (SELECT AVG(duracion_semanas) FROM Curso) as duracion_promedio_cursos,
+       (SELECT COUNT(*) FROM Matricula m, Curso c WHERE m.id_curso = c.id_curso AND c.modalidad = 'Presencial') as matriculas_presencial,
+       (SELECT COUNT(*) FROM Matricula m, Curso c WHERE m.id_curso = c.id_curso AND c.modalidad = 'Online') as matriculas_online
+FROM dual;
+
+COMMIT;
